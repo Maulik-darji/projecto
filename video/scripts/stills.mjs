@@ -16,6 +16,6 @@ const serveUrl = await bundle({ entryPoint: path.resolve('src/index.jsx') })
 const composition = await selectComposition({ serveUrl, id: 'Projecto' })
 for (const frame of frames) {
   const output = `out/frames/f${String(frame).padStart(3, '0')}.jpg`
-  await renderStill({ composition, serveUrl, frame, output, imageFormat: 'jpeg', scale: 0.5 })
+  await renderStill({ composition, serveUrl, frame, output, imageFormat: 'jpeg', scale: Number(process.env.SCALE || 0.5), jpegQuality: 88 })
   console.log(output)
 }

@@ -2,6 +2,7 @@ import Scene from './Scene'
 import RingDrawing from './RingDrawing'
 import Intelligence from './Intelligence'
 import NoKeyboard from './NoKeyboard'
+import Film from './Film'
 import Waitlist, { ThumbsFab } from './Waitlist'
 
 function Nav() {
@@ -37,7 +38,7 @@ function Hero() {
         </p>
         <div className="hero-cta">
           <a href="#waitlist" className="btn">Join the waitlist</a>
-          <a href="#demo" className="btn btn-ghost">See it move ↓</a>
+          <a href="#film" className="btn btn-ghost">▶ Watch the film</a>
         </div>
         <dl className="hero-stats">
           <div><dt>360°</dt><dd>thumb trackpad</dd></div>
@@ -117,6 +118,7 @@ export default function LandingPage() {
       <main>
         <Hero />
         <Marquee />
+        <Film />
         <Scene />
         <NoKeyboard />
         <Intelligence />
