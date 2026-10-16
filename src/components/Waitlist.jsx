@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { isEmail, joinWaitlist, sendThumbsUp, useInterest } from '../lib/interest'
 
+const ASK_REASON = 'projecto:ask-reason'
 const REASONS = ['Cursor & work', 'Notes & reminders', 'Talking to the AI', 'Smart home', 'Presentations', 'Accessibility']
 
 export function ThumbIcon({ size = 24 }) {
@@ -20,11 +21,35 @@ export default function Waitlist() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [voteError, setVoteError] = useState('')
+  const [reasonError, setReasonError] = useState('')
+  const [shake, setShake] = useState(0)
+  const reasonsRef = useRef(null)
 
-  const pick = (r) => setReasons((rs) => (rs.includes(r) ? rs.filter((x) => x !== r) : [...rs, r]))
+  const pick = (r) => {
+    setReasonError('')
+    setReasons((rs) => (rs.includes(r) ? rs.filter((x) => x !== r) : [...rs, r]))
+  }
+
+  // At least one use is required before a vote or sign-up goes through
+  const askForReason = (msg) => {
+    setReasonError(msg)
+    setShake((n) => n + 1)
+    reasonsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  // The floating button sends visitors here to choose first
+  useEffect(() => {
+    const on = () => askForReason('Pick what you would use it for, then tap “Yes, I want this”.')
+    window.addEventListener(ASK_REASON, on)
+    return () => window.removeEventListener(ASK_REASON, on)
+  }, [])
 
   const vote = async () => {
     if (interest.voted || voteBusy) return
+    if (reasons.length === 0) {
+      askForReason('Pick at least one thing you would use it for first.')
+      return
+    }
     setVoteBusy(true)
     setVoteError('')
     try {
@@ -41,10 +66,16 @@ export default function Waitlist() {
       setError('Please enter a valid email address.')
       return
     }
+    const chosen = reasons.length ? reasons : interest.reasons || []
+    if (chosen.length === 0) {
+      setError('')
+      askForReason('Pick at least one thing you would use it for before joining.')
+      return
+    }
     setBusy(true)
     setError('')
     try {
-      await joinWaitlist(email.trim(), reasons)
+      await joinWaitlist(email.trim(), chosen)
     } catch (err) {
       setError(err.message)
     }
@@ -59,6 +90,18 @@ export default function Waitlist() {
 
         <div className="wl-grid">
           <div className="wl-vote">
+            <div className={'wl-reasons' + (reasonError ? ' is-error' : '')} ref={reasonsRef} key={shake}>
+              <span>What would you use it for? Pick at least one</span>
+              <div role="group" aria-label="What would you use it for">
+                {REASONS.map((r) => (
+                  <button key={r} className={reasons.includes(r) ? 'is-on' : ''} onClick={() => pick(r)} aria-pressed={reasons.includes(r)}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+              {reasonError && <p className="wl-error" role="alert">{reasonError}</p>}
+            </div>
+
             <button
               className={'thumb-big' + (interest.voted ? ' is-voted' : '')}
               onClick={vote}
@@ -74,17 +117,6 @@ export default function Waitlist() {
                 : 'One tap. No email needed. It tells us whether to build Projecto.'}
             </p>
             {voteError && <p className="wl-error" role="alert">{voteError}</p>}
-
-            <div className="wl-reasons">
-              <span>What would you use it for? (optional)</span>
-              <div>
-                {REASONS.map((r) => (
-                  <button key={r} className={reasons.includes(r) ? 'is-on' : ''} onClick={() => pick(r)} aria-pressed={reasons.includes(r)}>
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
           <div className="wl-form">
@@ -116,10 +148,6 @@ export default function Waitlist() {
                 {error && <p className="wl-error" role="alert">{error}</p>}
               </form>
             )}
-            <div className="price">
-              <span className="price-num">$149</span>
-              <span className="price-sub">Expected price · left + right ring, charging dock, sizing kit</span>
-            </div>
           </div>
         </div>
       </div>
@@ -130,22 +158,16 @@ export default function Waitlist() {
 // Small floating prompt, visible everywhere on the page
 export function ThumbsFab() {
   const interest = useInterest()
-  const [busy, setBusy] = useState(false)
-  const click = async () => {
+  const click = () => {
     if (interest.voted) {
       document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth' })
       return
     }
-    setBusy(true)
-    try {
-      await sendThumbsUp([])
-    } catch {
-      document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth' })
-    }
-    setBusy(false)
+    // Don't vote blind: send them to choose what they'd use it for first
+    window.dispatchEvent(new Event(ASK_REASON))
   }
   return (
-    <button className={'fab' + (interest.voted ? ' is-voted' : '')} onClick={click} disabled={busy}>
+    <button className={'fab' + (interest.voted ? ' is-voted' : '')} onClick={click}>
       <ThumbIcon size={18} />
       <span>{interest.voted ? (interest.joined ? 'Thanks!' : 'Counted · join waitlist') : 'Want this?'}</span>
     </button>

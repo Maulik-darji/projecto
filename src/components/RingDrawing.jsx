@@ -102,7 +102,7 @@ export default function RingDrawing({ callouts = true, className }) {
           <Callout from={chip} to={[452, 34]} label="02 · TOUCH CONTROLLER" anchor="end" />
           <Callout from={discL} to={[30, 64]} label="03 · HAPTIC ENGINE" />
           <Callout from={band} to={[30, 380]} label="01 · 360° THUMB TRACKPAD" />
-          <Callout from={rim} to={[530, 330]} label="04 · TITANIUM SHELL" anchor="end" />
+          <Callout from={rim} to={[530, 330]} label="04 · BUILT-IN MIC" anchor="end" />
         </g>
       )}
     </svg>

@@ -1,0 +1,49 @@
+rules_version = '2';
+
+// Visitors may only ADD a sign-up or a thumbs-up, in the exact shape the site sends.
+// Only the admin (signed in with Google) can read or delete them.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Keep in sync with ADMIN_EMAIL in src/lib/firebase.js
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'maulik.darji2005@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    function validReasons(d) {
+      return d.reasons is list && d.reasons.size() >= 1 && d.reasons.size() <= 10;
+    }
+
+    function validMeta(d) {
+      return d.createdAt == request.time
+        && d.clientTimestamp is string && d.clientTimestamp.size() <= 40
+        && d.userAgent is string && d.userAgent.size() <= 512;
+    }
+
+    match /waitlist/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['email', 'reasons', 'createdAt', 'clientTimestamp', 'userAgent'])
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 254
+        && request.resource.data.email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$')
+        && validReasons(request.resource.data)
+        && validMeta(request.resource.data);
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    match /thumbs_up/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['reasons', 'createdAt', 'clientTimestamp', 'userAgent'])
+        && validReasons(request.resource.data)
+        && validMeta(request.resource.data);
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    // Everything else is closed
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

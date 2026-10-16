@@ -11,7 +11,7 @@ const STEPS = [
   { k: '05', t: 'Zoom', d: 'Slide both thumbs forward on both rings at once to zoom in.' },
 ]
 const BOUNDS = [0, 0.14, 0.42, 0.6, 0.8, 1]
-const PATH = [[50, 50], [26, 36], [70, 26], [60, 68], [14, 32]]
+const PATH = [[50, 50], [26, 36], [62, 30], [44, 62], [91, 16]]
 const STROKES = 3
 
 function compute(p) {

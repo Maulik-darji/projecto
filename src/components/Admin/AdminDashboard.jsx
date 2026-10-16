@@ -4,7 +4,9 @@ import {
   subscribeToWaitlist,
   subscribeToVotes,
   deleteWaitlistEntry,
-  joinWaitlist
+  joinWaitlist,
+  getLocalLeads,
+  getLocalVotes
 } from '../../lib/interest'
 
 const ALL_REASONS = [
@@ -17,9 +19,9 @@ const ALL_REASONS = [
 ]
 
 export default function AdminDashboard({ user }) {
-  const [waitlist, setWaitlist] = useState([])
-  const [votes, setVotes] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [waitlist, setWaitlist] = useState(() => getLocalLeads())
+  const [votes, setVotes] = useState(() => getLocalVotes())
+  const [loading, setLoading] = useState(false)
   const [firestoreError, setFirestoreError] = useState(null)
   const [search, setSearch] = useState('')
   const [selectedTag, setSelectedTag] = useState('ALL')
@@ -28,37 +30,61 @@ export default function AdminDashboard({ user }) {
   const [testEmail, setTestEmail] = useState('')
   const [testReasons, setTestReasons] = useState(['Cursor & work'])
   const [addingTest, setAddingTest] = useState(false)
+  const [reconnectCount, setReconnectCount] = useState(0)
 
-  // Real-time Firestore subscriptions
+  // Real-time Firestore subscriptions with local storage backup
   useEffect(() => {
-    setLoading(true)
+    // 1. Load local cache immediately
+    const localLeads = getLocalLeads()
+    const localVotes = getLocalVotes()
+    if (localLeads.length > 0) setWaitlist(localLeads)
+    if (localVotes.length > 0) setVotes(localVotes)
 
-    // Listen to Waitlist
+    // 2. Connect to Firestore
+    setLoading(true)
     const unsubWaitlist = subscribeToWaitlist(
-      (items) => {
-        setWaitlist(items)
+      (firestoreItems) => {
+        // Merge Firestore items with any locally submitted leads
+        const currentLocals = getLocalLeads()
+        const merged = [...firestoreItems]
+        currentLocals.forEach((loc) => {
+          if (!merged.some((f) => f.email?.toLowerCase() === loc.email?.toLowerCase())) {
+            merged.push(loc)
+          }
+        })
+        setWaitlist(merged)
         setLoading(false)
         setFirestoreError(null)
       },
       (err) => {
-        setFirestoreError(err.message)
+        setFirestoreError(err.message || 'Firestore connection issue')
         setLoading(false)
+        setWaitlist(getLocalLeads())
       }
     )
 
     // Listen to Votes
     const unsubVotes = subscribeToVotes(
       (items) => {
-        setVotes(items)
+        const currentLocals = getLocalVotes()
+        const mergedVotes = [...items]
+        currentLocals.forEach((loc) => {
+          if (!mergedVotes.some((f) => f.id === loc.id)) {
+            mergedVotes.push(loc)
+          }
+        })
+        setVotes(mergedVotes)
       },
-      () => {}
+      () => {
+        setVotes(getLocalVotes())
+      }
     )
 
     return () => {
       if (typeof unsubWaitlist === 'function') unsubWaitlist()
       if (typeof unsubVotes === 'function') unsubVotes()
     }
-  }, [])
+  }, [reconnectCount])
 
   const handleSignOut = async () => {
     try {
@@ -73,6 +99,7 @@ export default function AdminDashboard({ user }) {
     if (window.confirm(`Delete ${email} from waitlist?`)) {
       try {
         await deleteWaitlistEntry(id)
+        setWaitlist((prev) => prev.filter((item) => item.id !== id))
       } catch (err) {
         alert('Could not delete: ' + err.message)
       }
@@ -90,13 +117,14 @@ export default function AdminDashboard({ user }) {
       alert('No data to export.')
       return
     }
-    const headers = ['Email', 'Reasons', 'Date', 'ID']
+    const headers = ['Email', 'Reasons', 'Date', 'Source', 'ID']
     const rows = waitlist.map((item) => {
       const date = item.createdAt?.toDate
         ? item.createdAt.toDate().toISOString()
         : item.clientTimestamp || ''
       const reasons = Array.isArray(item.reasons) ? item.reasons.join('; ') : ''
-      return [`"${item.email || ''}"`, `"${reasons}"`, `"${date}"`, `"${item.id}"`]
+      const source = item.source || 'firestore'
+      return [`"${item.email || ''}"`, `"${reasons}"`, `"${date}"`, `"${source}"`, `"${item.id}"`]
     })
     const csvContent = [headers.join(','), ...rows.map((e) => e.join(','))].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -116,8 +144,10 @@ export default function AdminDashboard({ user }) {
     try {
       await joinWaitlist(testEmail.trim(), testReasons)
       setTestEmail('')
+      setWaitlist(getLocalLeads())
     } catch (err) {
-      alert(err.message)
+      // Even if Firestore is not created yet, local storage was saved
+      setWaitlist(getLocalLeads())
     } finally {
       setAddingTest(false)
     }
@@ -194,25 +224,36 @@ export default function AdminDashboard({ user }) {
 
       {/* Main Admin Content */}
       <main className="admin-body">
-        {/* Firestore Notice / Guide if permissions need configuration */}
+        {/* Firestore Setup Banner if Firestore Database hasn't been created or rules block it */}
         {firestoreError && (
           <div className="admin-alert-banner">
             <div className="admin-alert-head">
-              <strong>Notice: Firestore Rules Configuration</strong>
-              <span>({firestoreError})</span>
+              <strong>⚠️ FIREBASE SETUP REQUIRED: Cloud Firestore Database Not Activated</strong>
             </div>
-            <p>
-              If your Firestore database was recently created in test mode or is locked, make sure your Firestore security rules allow reads and writes.
+            <p style={{ marginTop: '8px' }}>
+              Your Google Authentication is working, but <strong>Cloud Firestore</strong> database has not been enabled in your Firebase project <code>projectcontrol-0</code> yet.
             </p>
-            <div className="code-block">
-              <code>{`rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true; // or if request.auth != null;
-    }
-  }
-}`}</code>
+            <div style={{ background: 'var(--paper)', border: '1px solid var(--soft)', padding: '16px', margin: '14px 0', fontSize: '14px' }}>
+              <p style={{ fontWeight: 700, marginBottom: '8px' }}>Follow these 3 quick steps in Firebase Console to enable live syncing:</p>
+              <ol style={{ paddingLeft: '20px', margin: '0', display: 'flex', flexDirection: 'column', gap: '8px', lineHeight: 1.5 }}>
+                <li>
+                  Open <strong><a href="https://console.firebase.google.com/project/projectcontrol-0/firestore" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline', color: 'var(--acc)' }}>Firebase Console &gt; Firestore Database ↗</a></strong>
+                </li>
+                <li>
+                  Click the <strong>"Create database"</strong> button, pick your database location, and select <strong>"Start in test mode"</strong> (or paste the rules below).
+                </li>
+                <li>
+                  Click <strong>Enable / Create</strong>. Once created, click <strong>"Retry Sync"</strong> below.
+                </li>
+              </ol>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <button onClick={() => setReconnectCount((c) => c + 1)} className="btn btn-sm btn-accent">
+                Retry Sync ↻
+              </button>
+              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                (Submissions made locally in this browser will remain saved)
+              </span>
             </div>
           </div>
         )}
@@ -236,7 +277,9 @@ service cloud.firestore {
             <div className="stat-value" style={{ fontSize: '20px', letterSpacing: '-0.02em', marginTop: '6px' }}>
               {firebaseConfig.projectId}
             </div>
-            <div className="stat-sub">projectcontrol-0 · Connected</div>
+            <div className="stat-sub">
+              {firestoreError ? '⚠️ Firestore Database pending' : '● Firestore Connected'}
+            </div>
           </div>
 
           <div className="admin-stat-card">
@@ -244,7 +287,7 @@ service cloud.firestore {
             <div className="stat-value" style={{ fontSize: '20px', letterSpacing: '-0.02em', marginTop: '6px' }}>
               Google OAuth
             </div>
-            <div className="stat-sub">Protected: {ADMIN_EMAIL}</div>
+            <div className="stat-sub">Active: {ADMIN_EMAIL}</div>
           </div>
         </section>
 
@@ -266,7 +309,7 @@ service cloud.firestore {
             className={`admin-tab ${activeTab === 'config' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('config')}
           >
-            Firebase Diagnostics
+            Firebase Diagnostics & Rules
           </button>
         </div>
 
@@ -329,10 +372,10 @@ service cloud.firestore {
                   </tr>
                 </thead>
                 <tbody>
-                  {loading ? (
+                  {loading && waitlist.length === 0 ? (
                     <tr>
                       <td colSpan="5" className="table-empty">
-                        Loading waitlist entries from Firebase Firestore...
+                        Connecting to Firebase Firestore...
                       </td>
                     </tr>
                   ) : filteredWaitlist.length === 0 ? (
@@ -340,7 +383,7 @@ service cloud.firestore {
                       <td colSpan="5" className="table-empty">
                         {search || selectedTag !== 'ALL'
                           ? 'No waitlist leads match your current filter.'
-                          : 'No waitlist leads recorded yet. Submissions from the landing page will appear here instantly!'}
+                          : 'No waitlist leads recorded yet. Try the test submission form below or join on the landing page!'}
                       </td>
                     </tr>
                   ) : (
@@ -349,6 +392,11 @@ service cloud.firestore {
                         <td className="table-idx">{idx + 1}</td>
                         <td className="table-email">
                           <strong>{item.email}</strong>
+                          {item.source === 'local' && (
+                            <span className="reason-pill" style={{ marginLeft: '8px', fontSize: '9px', background: 'var(--soft)' }}>
+                              Local
+                            </span>
+                          )}
                           {copiedEmail === item.email && <span className="copied-pill">Copied!</span>}
                         </td>
                         <td>
@@ -394,7 +442,7 @@ service cloud.firestore {
             <div className="admin-quick-test">
               <div className="quick-test-header">
                 <strong>Test Lead Submission</strong>
-                <span>Add an entry to test live Firebase Firestore syncing</span>
+                <span>Add an entry to test live Firebase syncing</span>
               </div>
               <form onSubmit={handleAddTest} className="quick-test-form">
                 <input
@@ -444,10 +492,10 @@ service cloud.firestore {
           </section>
         )}
 
-        {/* Tab 3: Firebase Config */}
+        {/* Tab 3: Firebase Config & Rules */}
         {activeTab === 'config' && (
           <section className="admin-section">
-            <h2 className="admin-section-title">Firebase System Configuration</h2>
+            <h2 className="admin-section-title">Firebase System Configuration & Firestore Setup</h2>
             <div className="config-grid">
               <div className="config-card">
                 <h3>Active Firebase Configuration</h3>
@@ -455,40 +503,21 @@ service cloud.firestore {
               </div>
 
               <div className="config-card">
-                <h3>Admin Authorization</h3>
-                <div className="auth-spec-list">
-                  <div className="auth-spec-item">
-                    <span>Authorized Email:</span>
-                    <strong>{ADMIN_EMAIL}</strong>
-                  </div>
-                  <div className="auth-spec-item">
-                    <span>Active Session:</span>
-                    <strong>{user?.email}</strong>
-                  </div>
-                  <div className="auth-spec-item">
-                    <span>Auth Method:</span>
-                    <strong>Google Sign-In Popup</strong>
-                  </div>
-                  <div className="auth-spec-item">
-                    <span>Unauthorized Policy:</span>
-                    <strong>Show 404 Page (Active)</strong>
-                  </div>
-                </div>
-
-                <h3 style={{ marginTop: '24px' }}>Firestore Rules Setup</h3>
+                <h3>Firestore Security Rules</h3>
                 <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '8px 0' }}>
-                  To ensure submissions and reads succeed in production, go to Firebase Console &gt; Firestore Database &gt; Rules:
+                  Copy and paste this into <strong>Firebase Console &gt; Firestore Database &gt; Rules</strong>:
                 </p>
                 <pre className="code-pre">{`rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Anyone can submit to waitlist or thumbs up
     match /waitlist/{doc} {
       allow create: if true;
-      allow read, write: if request.auth != null && request.auth.token.email == "${ADMIN_EMAIL}";
+      allow read, update, delete: if request.auth != null && request.auth.token.email == "${ADMIN_EMAIL}";
     }
     match /thumbs_up/{doc} {
       allow create: if true;
-      allow read: if request.auth != null && request.auth.token.email == "${ADMIN_EMAIL}";
+      allow read, update, delete: if request.auth != null && request.auth.token.email == "${ADMIN_EMAIL}";
     }
   }
 }`}</pre>

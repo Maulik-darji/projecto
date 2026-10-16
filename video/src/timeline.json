@@ -1,0 +1,54 @@
+{
+  "fps": 30,
+  "total": 900,
+  "scenes": [
+    {
+      "id": "intro",
+      "file": "voice/line1.wav",
+      "voiceFrames": 52,
+      "frames": 71
+    },
+    {
+      "id": "rings",
+      "file": "voice/line2.wav",
+      "voiceFrames": 97,
+      "frames": 107
+    },
+    {
+      "id": "cursor",
+      "file": "voice/line3.wav",
+      "voiceFrames": 111,
+      "frames": 121
+    },
+    {
+      "id": "flow",
+      "file": "voice/line4.wav",
+      "voiceFrames": 78,
+      "frames": 96
+    },
+    {
+      "id": "voice",
+      "file": "voice/line5.wav",
+      "voiceFrames": 136,
+      "frames": 146
+    },
+    {
+      "id": "memory",
+      "file": "voice/line6.wav",
+      "voiceFrames": 90,
+      "frames": 111
+    },
+    {
+      "id": "everything",
+      "file": "voice/line7.wav",
+      "voiceFrames": 121,
+      "frames": 131
+    },
+    {
+      "id": "outro",
+      "file": "voice/line8.wav",
+      "voiceFrames": 78,
+      "frames": 117
+    }
+  ]
+}

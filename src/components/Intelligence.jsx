@@ -281,7 +281,7 @@ export default function Intelligence() {
           </svg>
           <span className="sq sq-l" />
           <span className="sq sq-r" />
-          <span className="intel-link-label">BLE 5.4 · encrypted sync</span>
+          <span className="intel-link-label">Encrypted sync</span>
         </div>
 
         <Phone tab={tab} setTab={(t) => { setTab(t); sync() }} data={data} toggle={toggle} flip={flip} />
